@@ -1,0 +1,24 @@
+{
+	"arrowParens": "always",
+	"printWidth": 120,
+	"semi": true,
+	"singleAttributePerLine": false,
+	"singleQuote": false,
+	"trailingComma": "es5",
+	"useTabs": false,
+	"tabWidth": 4,
+	"overrides": [
+		{
+			"files": "*.css",
+			"options": {
+				"parser": "css"
+			}
+		},
+		{
+			"files": "*.scss",
+			"options": {
+				"parser": "scss"
+			}
+		}
+	]
+}

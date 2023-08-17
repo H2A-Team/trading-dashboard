@@ -1,0 +1,39 @@
+.loading-container {
+    max-height: 100vh;
+    width: 100%;
+    height: 100%;
+
+    padding: 0 1.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .loading-container__app-logo-container {
+        height: 25vh;
+        max-height: min(200px, 50%);
+        text-align: center;
+
+        .loading-container__app-logo-container__app-logo {
+            height: 100%;
+            -webkit-user-drag: none;
+
+            animation: flashing 2000ms infinite linear;
+        }
+    }
+}
+
+@keyframes flashing {
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.25;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
