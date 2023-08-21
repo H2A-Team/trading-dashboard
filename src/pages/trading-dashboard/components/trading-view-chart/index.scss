@@ -1,0 +1,69 @@
+#trading-view-chart__container {
+    position: relative;
+    --chart-gap: 4px;
+
+    & > #trading-view-chart__main-chart {
+        position: absolute;
+        inset: 0;
+    }
+
+    & > #trading-view-chart__sub-chart {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        opacity: 0;
+    }
+
+    &.trading-view-chart__container--splitted-half {
+        & > #trading-view-chart__main-chart {
+            bottom: calc(50% + calc(var(--chart-gap) / 2));
+        }
+
+        & > #trading-view-chart__sub-chart {
+            // top: calc(50% + calc(var(--chart-gap) / 2));
+            top: calc(50% - calc(var(--chart-gap) / 2));
+            opacity: 1;
+
+            border-top: var(--chart-gap) solid var(--background-color);
+        }
+    }
+}
+
+.trading-view-chart__overlay {
+    --container-padding: 16px;
+    --component-padding: 4px 8px;
+    --component-border-radius: 4px;
+
+    position: absolute;
+    z-index: 3;
+
+    &.trading-view-chart__overlay--top-left {
+        top: var(--container-padding);
+        left: var(--container-padding);
+    }
+
+    > .overlay-item {
+        margin-bottom: 8px;
+        display: flex;
+
+        user-select: none;
+        -webkit-user-select: none;
+
+        > .overlay-item__card {
+            background-color: white;
+            padding: var(--component-padding);
+            border-radius: var(--component-border-radius);
+            box-shadow: rgba(0, 0, 0, 0.02) 0px 1px 3px 0px, rgba(27, 31, 35, 0.15) 0px 0px 0px 1px;
+        }
+    }
+
+    .overlay__hovering-item-info {
+        display: flex;
+        gap: 6px;
+
+        > span > span {
+            margin-right: 2px;
+        }
+    }
+}
