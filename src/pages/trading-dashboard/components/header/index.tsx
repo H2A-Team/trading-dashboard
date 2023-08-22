@@ -40,6 +40,8 @@ export default function Header(props: ITradingDashboardHeaderProps) {
                     </Link>
                 )}
 
+                <div className="trading-dashboard__header__middle"></div>
+
                 <div className="trading-dashboard__header__right">
                     {showDrawerToggle ? (
                         <Button type="text" onClick={() => openDrawer && openDrawer()}>
