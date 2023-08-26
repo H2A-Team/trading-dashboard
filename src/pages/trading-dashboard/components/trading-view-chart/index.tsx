@@ -1,4 +1,4 @@
-import { ElementRef, useRef, useEffect, useState } from "react";
+import { ElementRef, useRef, useEffect, useState, useCallback } from "react";
 import {
     IChartApi,
     ISeriesApi,
@@ -7,11 +7,14 @@ import {
     HistogramData,
     MouseEventHandler,
     LineData,
+    UTCTimestamp,
 } from "lightweight-charts";
 import "./index.scss";
-import { TRADING_DASHBOARD_MODE } from "../..";
+import { ISymbol, ITimeframe, TIMEFRAME_OPTIONS, TRADING_DASHBOARD_MODE } from "../..";
 import { EyeOutlined } from "@ant-design/icons";
 import { Space } from "antd";
+import useSocket from "../../../../hooks/use-socket";
+import { SOCKET_EMIT_EVENT, SOCKET_LISTEN_EVENT } from "../../../../constants/socket-constants";
 
 export interface IPredictedLine {
     label: string;
@@ -24,15 +27,36 @@ export interface IPredictedData {
 }
 
 interface ITradingViewChartProps {
-    symbol: string;
+    symbol: ISymbol | null;
     mode: TRADING_DASHBOARD_MODE;
     predictedData?: IPredictedData;
+    timeframe: ITimeframe;
 }
 
 interface IChartData {
     candlestickData: CandlestickData[];
     histogramData: HistogramData[];
     predictedData: IPredictedData;
+}
+
+interface ICandleInfo {
+    high?: number;
+    low?: number;
+    close?: number;
+    open?: number;
+}
+
+interface IRealtimeCandleData {
+    binanceEventTimestamp: number;
+    symbol: string;
+    startIntervalTimestamp: number;
+    endIntervalTimestamp: number;
+    interval: string;
+    openPrice: string;
+    closePrice: string;
+    highPrice: string;
+    lowPrice: string;
+    volume: string;
 }
 
 export const CHART_COLORS = {
@@ -43,14 +67,8 @@ export const CHART_COLORS = {
     LINE: ["#2962ff", "#ff6742"],
 };
 
-interface ICandleInfo {
-    high?: number;
-    low?: number;
-    close?: number;
-    open?: number;
-}
-
 const getLatestCandleData = (candleStickData: CandlestickData[]): ICandleInfo => {
+    if (candleStickData.length === 0) return {};
     const latestCandle = candleStickData[candleStickData.length - 1];
 
     return {
@@ -64,58 +82,29 @@ const getLatestCandleData = (candleStickData: CandlestickData[]): ICandleInfo =>
 const pickCandleColor = (candle: ICandleInfo): string | undefined => {
     if (candle.open == null || candle.close == null) return undefined;
 
-    return candle.open < candle.close ? CHART_COLORS.UP : CHART_COLORS.DOWN;
+    return candle.open <= candle.close ? CHART_COLORS.UP : CHART_COLORS.DOWN;
 };
 
-const fakeData = {
-    areaDate: [
-        { time: "2018-12-22", value: 32.51 },
-        { time: "2018-12-23", value: 31.11 },
-        { time: "2018-12-24", value: 27.02 },
-        { time: "2018-12-25", value: 27.32 },
-        { time: "2018-12-26", value: 25.17 },
-        { time: "2018-12-27", value: 28.89 },
-        { time: "2018-12-28", value: 25.46 },
-        { time: "2018-12-29", value: 23.92 },
-        { time: "2018-12-30", value: 22.68 },
-        { time: "2018-12-31", value: 22.67 },
-    ],
-    candlestickData: [
-        { time: "2018-12-22", open: 75.16 + 200, high: 82.84 + 200, low: 36.16 + 200, close: 45.72 + 200 },
-        { time: "2018-12-23", open: 45.12 + 200, high: 53.9 + 200, low: 45.12 + 200, close: 48.09 + 200 },
-        { time: "2018-12-24", open: 60.71 + 200, high: 60.71 + 200, low: 53.39 + 200, close: 59.29 + 200 },
-        { time: "2018-12-25", open: 68.26 + 200, high: 68.26 + 200, low: 59.04 + 200, close: 60.5 + 200 },
-        { time: "2018-12-26", open: 67.71 + 200, high: 105.85 + 200, low: 66.67 + 200, close: 91.04 + 200 },
-        { time: "2018-12-27", open: 91.04 + 200, high: 121.4 + 200, low: 82.7 + 200, close: 111.4 + 200 },
-        { time: "2018-12-28", open: 111.51 + 200, high: 142.83 + 200, low: 103.34 + 200, close: 131.25 + 200 },
-        { time: "2018-12-29", open: 131.33 + 200, high: 151.17 + 200, low: 77.68 + 200, close: 96.43 + 200 },
-        { time: "2018-12-30", open: 106.33 + 200, high: 110.2 + 200, low: 90.39 + 200, close: 98.1 + 200 },
-        { time: "2018-12-31", open: 109.87 + 200, high: 114.69 + 200, low: 85.66 + 200, close: 111.26 + 200 },
-    ],
-    histogramData: [
-        { time: "2018-12-22", value: 32.51, color: CHART_COLORS.DARKER_DOWN },
-        { time: "2018-12-23", value: 31.11, color: CHART_COLORS.DARKER_UP },
-        { time: "2018-12-24", value: 27.02, color: CHART_COLORS.DARKER_DOWN },
-        { time: "2018-12-25", value: 27.32, color: CHART_COLORS.DARKER_DOWN },
-        { time: "2018-12-26", value: 25.17, color: CHART_COLORS.DARKER_UP },
-        { time: "2018-12-27", value: 28.89, color: CHART_COLORS.DARKER_UP },
-        { time: "2018-12-28", value: 25.46, color: CHART_COLORS.DARKER_UP },
-        { time: "2018-12-29", value: 23.92, color: CHART_COLORS.DARKER_DOWN },
-        { time: "2018-12-30", value: 22.68, color: CHART_COLORS.DARKER_DOWN },
-        { time: "2018-12-31", value: 22.67, color: CHART_COLORS.DARKER_UP },
-    ],
+const pickVolumeColor = (candle: ICandleInfo): string | undefined => {
+    if (candle.open == null || candle.close == null) return undefined;
+
+    return candle.open <= candle.close ? CHART_COLORS.DARKER_UP : CHART_COLORS.DARKER_DOWN;
 };
 
 const defaultChartData: IChartData = {
-    candlestickData: fakeData.candlestickData,
-    histogramData: fakeData.histogramData,
+    candlestickData: [],
+    histogramData: [],
     predictedData: {},
 };
 
 export default function TradingViewChart(props: ITradingViewChartProps) {
-    const { symbol, mode, predictedData } = props;
+    const { symbol, timeframe, mode, predictedData } = props;
+
+    // custom hook
+    const { socket, methods } = useSocket();
 
     // refs
+    const joinedRoom = useRef(false);
     const chartRef = useRef<ElementRef<"div"> | null>(null);
     const subChartRef = useRef<ElementRef<"div"> | null>(null);
     const chart = useRef<IChartApi | null>(null);
@@ -135,6 +124,73 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
     const [data, setData] = useState<IChartData>(defaultChartData);
     const [hoveringCandleInfo, setHoveringCandleInfo] = useState<ICandleInfo>({});
     const [displaySubChart, setDisplaySubChart] = useState(false);
+    const [innerTimeframe, setInnerTimeframe] = useState<ITimeframe>(TIMEFRAME_OPTIONS["3M"]);
+    const [innerSymbol, setInnerSymbol] = useState<ISymbol | null>(null);
+    const [currentRoomId, setCurrentRoomId] = useState<string>("");
+
+    // socket handlers
+    const handleReceivedRealtimeCandle = useCallback(
+        (data: IRealtimeCandleData) => {
+            if (innerSymbol === null) return;
+            if (data.symbol !== innerSymbol.symbol) return;
+
+            setData((prev) => {
+                const foundCandle = prev.candlestickData.find(
+                    (candle) => (candle.time as UTCTimestamp) === ((data.startIntervalTimestamp / 1000) as UTCTimestamp)
+                );
+                const foundVolume = prev.histogramData.find(
+                    (volume) => (volume.time as UTCTimestamp) === ((data.startIntervalTimestamp / 1000) as UTCTimestamp)
+                );
+
+                if (foundCandle) {
+                    foundCandle.open = parseFloat(data.openPrice);
+                    foundCandle.close = parseFloat(data.closePrice);
+                    foundCandle.high = parseFloat(data.highPrice);
+                    foundCandle.low = parseFloat(data.lowPrice);
+
+                    if (foundVolume) {
+                        foundVolume.value = parseFloat(data.volume);
+                        foundVolume.color = pickVolumeColor({
+                            open: foundCandle.open,
+                            close: foundCandle.close,
+                            high: foundCandle.high,
+                            low: foundCandle.low,
+                        });
+                    }
+
+                    return { ...prev };
+                }
+
+                return {
+                    ...prev,
+                    candlestickData: [
+                        ...prev.candlestickData,
+                        {
+                            open: parseFloat(data.openPrice),
+                            close: parseFloat(data.closePrice),
+                            high: parseFloat(data.highPrice),
+                            low: parseFloat(data.lowPrice),
+                            time: (data.startIntervalTimestamp / 1000) as UTCTimestamp,
+                        },
+                    ],
+                    histogramData: [
+                        ...prev.histogramData,
+                        {
+                            time: (data.startIntervalTimestamp / 1000) as UTCTimestamp,
+                            value: parseFloat(data.volume),
+                            color: pickVolumeColor({
+                                open: parseFloat(data.openPrice),
+                                close: parseFloat(data.closePrice),
+                                high: parseFloat(data.highPrice),
+                                low: parseFloat(data.lowPrice),
+                            }),
+                        },
+                    ],
+                };
+            });
+        },
+        [innerSymbol]
+    );
 
     // chart initialization effect
     useEffect(() => {
@@ -280,8 +336,49 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
     // effect executed when symbol changed
     useEffect(() => {
-        symbol !== "" && console.log(`Symbol has changed to: ${symbol}`);
-    }, [symbol]);
+        if (symbol === null) return;
+        if (socket) {
+            if (symbol.symbol !== innerSymbol?.symbol) {
+                socket.emit(SOCKET_EMIT_EVENT.leave_room, currentRoomId);
+                setData(defaultChartData);
+                joinedRoom.current = false;
+                setInnerSymbol(symbol);
+            }
+        } else {
+            setInnerSymbol(symbol);
+            methods.initSocket();
+            joinedRoom.current = false;
+        }
+    }, [symbol, innerSymbol, currentRoomId]);
+
+    useEffect(() => {
+        if (!socket) return;
+        if (!joinedRoom.current) return;
+
+        socket.emit(SOCKET_EMIT_EVENT.leave_room, currentRoomId);
+        joinedRoom.current = false;
+        setData(defaultChartData);
+        setInnerTimeframe(timeframe);
+    }, [timeframe, innerTimeframe]);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        socket.removeAllListeners(SOCKET_LISTEN_EVENT.realtime_candle);
+
+        socket.on(SOCKET_LISTEN_EVENT.realtime_candle, handleReceivedRealtimeCandle);
+    }, [socket, handleReceivedRealtimeCandle]);
+
+    useEffect(() => {
+        if (!socket) return;
+        if (joinedRoom.current) return;
+        if (innerSymbol === null) return;
+
+        const roomId = `${innerSymbol.symbol.toLowerCase()}@kline_${innerTimeframe.interval}`;
+        socket.emit(SOCKET_EMIT_EVENT.join_room, roomId);
+        joinedRoom.current = true;
+        setCurrentRoomId(roomId);
+    }, [socket, innerSymbol, innerTimeframe]);
 
     return (
         <>

@@ -98,7 +98,10 @@ export default function useSocket(): IUseSocket {
     }, [socket]);
 
     useEffect(() => {
-        const newSocket = io(APP_CONSTANTS.SOCKET_DOMAIN + namespace);
+        const newSocket = io(APP_CONSTANTS.SOCKET_DOMAIN + namespace, {
+            path: "/socket/socket.io",
+            transports: ["websocket"],
+        });
 
         setSocket((oldSocket) => {
             oldSocket?.close();
