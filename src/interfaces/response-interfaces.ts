@@ -1,6 +1,7 @@
 export interface IBaseResponse<T> {
-    code: number;
-    message: string;
     data?: T;
-    errors?: any;
+    total?: number;
+    offset?: number;
+    limit?: number;
+    detail?: any;
 }

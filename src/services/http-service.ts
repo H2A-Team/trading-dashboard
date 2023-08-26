@@ -1,14 +1,15 @@
 import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios";
 import { message } from "antd";
 import { IBaseResponse } from "../interfaces/response-interfaces";
-import { COMMON_CONSTANTS, RESPONSE_CODE } from "../constants/common-constants";
+import { COMMON_CONSTANTS } from "../constants/common-constants";
+import { APP_CONSTANTS } from "../constants/app-constants";
 
-export const axiosInstance = axios.create({
-    // baseURL: APP_CONSTANTS.API_URL,
+const axiosInstance = axios.create({
+    baseURL: APP_CONSTANTS.API_URL,
     headers: {
         "Content-Type": "application/json",
     },
-    withCredentials: true,
+    // withCredentials: true,
 });
 
 axiosInstance.interceptors.response.use(
@@ -26,11 +27,6 @@ axiosInstance.interceptors.response.use(
         }
 
         const { status } = response;
-
-        if ((response.data as IBaseResponse<any>).code === RESPONSE_CODE.LOGIN_EXPIRED) {
-            window.location.replace("/login?login_expired=true");
-            return new Promise(() => {});
-        }
 
         if (status === 500) {
             const data = response.data;
@@ -79,3 +75,5 @@ export class HttpService {
         return response.data;
     }
 }
+
+export { axiosInstance };

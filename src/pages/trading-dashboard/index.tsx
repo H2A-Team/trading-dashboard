@@ -1,5 +1,5 @@
 import Header from "./components/header";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TradingViewChart, { IPredictedData, IPredictedLine } from "./components/trading-view-chart";
 import {
     Col,
@@ -16,25 +16,44 @@ import {
     MenuProps,
     Popconfirm,
 } from "antd";
-import { CloseOutlined, GoldOutlined, RightOutlined, SettingOutlined } from "@ant-design/icons";
+import { CloseOutlined, GoldOutlined, RightOutlined, SettingOutlined, SwapOutlined } from "@ant-design/icons";
 import { useQuery } from "../../hooks/use-query";
 import PredictOptionModal, { IPredictOptionForm, IPredictOptionModalOptions } from "./components/predict-option-modal";
 import "./index.scss";
 import { CandlestickData } from "lightweight-charts";
+import { HttpService } from "../../services/http-service";
+import { useBlockUI } from "../../contexts/block-ui";
+import { useAntMessage } from "../../contexts/ant-message";
 
-const TIMEFRAME_OPTIONS = {
-    "1D": 0,
-    "5D": 1,
-    "1M": 2,
-    "3M": 3,
-    "6M": 4,
-    YTD: 5,
-    "1Y": 6,
-    "5Y": 7,
-    All: 8,
+export interface ITimeframe {
+    period: string;
+    interval: string;
+}
+
+export const TIMEFRAME_OPTIONS: { [key: string]: ITimeframe } = {
+    "1D": {
+        period: "1D",
+        interval: "1m",
+    },
+    "5D": {
+        period: "5D",
+        interval: "5m",
+    },
+    "1M": {
+        period: "1M",
+        interval: "30m",
+    },
+    "3M": {
+        period: "3M",
+        interval: "1h",
+    },
+    "6M": {
+        period: "6M",
+        interval: "2h",
+    },
 };
 
-type TIMEFRAME_OPTION = keyof typeof TIMEFRAME_OPTIONS;
+export type TIMEFRAME_OPTION = keyof typeof TIMEFRAME_OPTIONS;
 
 // option format: (name: { key, label })
 const PREDICT_OPTIONS = {
@@ -48,17 +67,19 @@ const PREDICT_OPTIONS = {
     },
 };
 
-interface ISymbol {
-    name: string;
-    marketValue: number;
+export interface ISymbol {
+    symbol: string;
+    status: string;
+    baseAsset: string;
+    baseAssetPrecision: number;
+    quoteAsset: string;
+    quotePrecision: number;
+    quoteAssetPrecision: number;
+    baseCommissionPrecision: number;
+    quoteCommissionPrecision: number;
 }
 
 export type TRADING_DASHBOARD_MODE = "normal" | "predict-candle" | "predict-timeframe";
-
-const defaultSelectSymbol: ISymbol = {
-    name: "",
-    marketValue: 0,
-};
 
 const defaultPredictOptionModalOptions: IPredictOptionModalOptions = {
     modelsList: [
@@ -201,23 +222,35 @@ export default function TradingDashboard() {
     const { token } = theme.useToken();
     const { isMatching: isSmallScreen } = useQuery("(max-width: 1000px)");
     const { isMatching: hideRightSidebar } = useQuery("(max-width: 768px)");
+    const { blockUI, unblockUI } = useBlockUI();
+    const messageApi = useAntMessage();
 
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [timeframe, setTimeframe] = useState<TIMEFRAME_OPTION>("All");
-    const [symbolsList, setSymbolsList] = useState<string[]>([
-        "BTCUSD",
-        "BTCUSDT",
-        "BTCUSDC",
-        "ETHUSD",
-        "ETHUSDT",
-        "ETHUSDC",
-    ]);
+    const [timeframe, setTimeframe] = useState<ITimeframe>(TIMEFRAME_OPTIONS["3M"]);
+    const [symbolsList, setSymbolsList] = useState<ISymbol[]>([]);
     const [symbolSearch, setSymbolSearch] = useState<string>("");
-    const [selectedSymbol, setSelectedSymbol] = useState<ISymbol>(defaultSelectSymbol);
+    const [selectedSymbol, setSelectedSymbol] = useState<ISymbol | null>(null);
     const [mode, setMode] = useState<TRADING_DASHBOARD_MODE>("normal");
     const [openPredictOptionModal, setOpenPredictOptionModal] = useState(false);
     const [predictOptions, setPredictOptions] = useState<IPredictOptionModalOptions>(defaultPredictOptionModalOptions);
     const [predictedData, setPredictedData] = useState<IPredictedData>({});
+
+    useEffect(() => {
+        const fetch = async () => {
+            blockUI();
+            try {
+                const res = await HttpService.get<ISymbol[]>("/v1/symbols");
+
+                if (res.data) setSymbolsList(res.data);
+            } catch (error) {
+                console.error(error);
+                messageApi.error("There was an error when fetching symbols list");
+            }
+            unblockUI();
+        };
+
+        fetch();
+    }, [blockUI, unblockUI]);
 
     // handlers
     const handleSearchSymbol: React.ChangeEventHandler<HTMLInputElement> = (e) => {
@@ -226,12 +259,12 @@ export default function TradingDashboard() {
         setSymbolSearch(searchStr);
     };
 
-    const handleSelectSymbol = (symbol: string) => {
-        setSelectedSymbol((val) => ({ ...val, name: symbol }));
-        setSymbolSearch("");
+    const handleSelectSymbol = (symbol: ISymbol) => {
+        setSelectedSymbol(symbol);
     };
 
     const handlePredictBtn: MenuProps["onClick"] = ({ key }) => {
+        if (selectedSymbol === null) return;
         switch (key) {
             case PREDICT_OPTIONS.candle.key: {
                 setPredictedData({
@@ -273,7 +306,7 @@ export default function TradingDashboard() {
     };
 
     // process data
-    const filteredSymbolsList = symbolsList.filter((symbol) => symbol.indexOf(symbolSearch) > -1);
+    const filteredSymbolsList = symbolsList.filter((symbol) => symbol.symbol.indexOf(symbolSearch) > -1);
 
     // render functions
     const renderRightSidebar = () => {
@@ -287,21 +320,26 @@ export default function TradingDashboard() {
                             placeholder="Enter a symbol name"
                             value={symbolSearch}
                             onChange={handleSearchSymbol}
+                            allowClear
                         />
 
                         <div style={{ flexGrow: 1, overflowY: "auto" }}>
                             <Space direction="vertical" style={{ width: "100%" }} size="small">
                                 {filteredSymbolsList.map((symbol) => (
                                     <Button
-                                        type={symbol === selectedSymbol.name ? "primary" : "text"}
-                                        key={symbol}
+                                        type={
+                                            selectedSymbol && symbol.symbol === selectedSymbol.symbol
+                                                ? "primary"
+                                                : "text"
+                                        }
+                                        key={symbol.symbol}
                                         block
                                         style={{ textAlign: "left" }}
                                         onClick={() => handleSelectSymbol(symbol)}
                                     >
                                         <Space size="middle">
                                             <GoldOutlined />
-                                            {symbol}
+                                            {symbol.symbol}
                                         </Space>
                                     </Button>
                                 ))}
@@ -318,13 +356,13 @@ export default function TradingDashboard() {
 
                         <div style={{ flexGrow: 1, overflowY: "auto" }}>
                             <Space direction="vertical" style={{ width: "100%" }} size="middle">
-                                {selectedSymbol.name === "" ? (
+                                {selectedSymbol === null ? (
                                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Please select a symbol" />
                                 ) : (
                                     <>
                                         <Space direction="vertical" style={{ width: "100%" }} size={0}>
                                             <Typography.Title level={5} style={{ margin: 0 }}>
-                                                {selectedSymbol.name}
+                                                {selectedSymbol.symbol}
                                             </Typography.Title>
                                             <Typography.Text type="secondary" style={{ margin: 0 }}>
                                                 Crypto
@@ -333,8 +371,9 @@ export default function TradingDashboard() {
 
                                         <Typography.Title level={2} style={{ margin: 0 }}>
                                             <Space size="small">
-                                                {selectedSymbol.marketValue}
-                                                <span>USD</span>
+                                                <span>{selectedSymbol.baseAsset}</span>
+                                                <SwapOutlined style={{ fontSize: 16 }} />
+                                                <span>{selectedSymbol.quoteAsset}</span>
                                             </Space>
                                         </Typography.Title>
                                     </>
@@ -367,11 +406,30 @@ export default function TradingDashboard() {
                             }}
                         >
                             <div className="trading-dashboard__main__item--grow trading-dashboard__contents-block">
-                                <TradingViewChart
-                                    symbol={selectedSymbol.name}
-                                    mode={mode}
-                                    predictedData={predictedData}
-                                />
+                                {selectedSymbol === null ? (
+                                    <div
+                                        style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            justifyContent: "center",
+                                            alignItems: "center",
+                                        }}
+                                    >
+                                        <Empty
+                                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                            description="Please select a symbol to display chart"
+                                        />
+                                    </div>
+                                ) : (
+                                    <TradingViewChart
+                                        symbol={selectedSymbol}
+                                        mode={mode}
+                                        predictedData={predictedData}
+                                        timeframe={timeframe}
+                                    />
+                                )}
                             </div>
                             <div className="trading-dashboard__contents-block trading-dashboard__chart-options">
                                 <div className="trading-dashboard__chart-options__left">
@@ -385,20 +443,25 @@ export default function TradingDashboard() {
                                                     label: option,
                                                 })),
                                                 selectable: true,
-                                                selectedKeys: [timeframe],
-                                                onClick: (e) => setTimeframe(e.key as TIMEFRAME_OPTION),
+                                                selectedKeys: [timeframe.period],
+                                                onClick: (e) => {
+                                                    if (selectedSymbol === null) return;
+                                                    setTimeframe(TIMEFRAME_OPTIONS[e.key]);
+                                                },
                                             }}
                                             trigger={["click"]}
+                                            disabled={selectedSymbol === null}
                                         >
                                             <Button onClick={(e) => e.preventDefault()} style={{ height: "100%" }}>
-                                                {timeframe}
+                                                {timeframe.period}
                                             </Button>
                                         </Dropdown>
                                     ) : (
                                         <Segmented
                                             options={Object.keys(TIMEFRAME_OPTIONS)}
-                                            value={timeframe}
-                                            onChange={(value) => setTimeframe(value as TIMEFRAME_OPTION)}
+                                            value={timeframe.period}
+                                            onChange={(value) => setTimeframe(TIMEFRAME_OPTIONS[value as string])}
+                                            disabled={selectedSymbol === null}
                                         />
                                     )}
                                 </div>
@@ -414,6 +477,7 @@ export default function TradingDashboard() {
                                                 onClick: handlePredictBtn,
                                             }}
                                             trigger={["click"]}
+                                            disabled={selectedSymbol === null}
                                         >
                                             <Button type="text" onClick={(e) => e.preventDefault()}>
                                                 <Space>
