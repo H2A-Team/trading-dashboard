@@ -11,10 +11,12 @@ import {
 } from "lightweight-charts";
 import "./index.scss";
 import { ISymbol, ITimeframe, TIMEFRAME_OPTIONS, TRADING_DASHBOARD_MODE } from "../..";
-import { EyeOutlined } from "@ant-design/icons";
-import { Space } from "antd";
+import { EyeOutlined, LoadingOutlined } from "@ant-design/icons";
+import { Space, theme } from "antd";
 import useSocket from "../../../../hooks/use-socket";
 import { SOCKET_EMIT_EVENT, SOCKET_LISTEN_EVENT } from "../../../../constants/socket-constants";
+import { useAntMessage } from "../../../../contexts/ant-message";
+import { HttpService } from "../../../../services/http-service";
 
 export interface IPredictedLine {
     label: string;
@@ -91,6 +93,29 @@ const pickVolumeColor = (candle: ICandleInfo): string | undefined => {
     return candle.open <= candle.close ? CHART_COLORS.DARKER_UP : CHART_COLORS.DARKER_DOWN;
 };
 
+const convertRealtimeCandlestickToCandlestickData = (data: IRealtimeCandleData): CandlestickData => {
+    return {
+        open: parseFloat(data.openPrice),
+        close: parseFloat(data.closePrice),
+        high: parseFloat(data.highPrice),
+        low: parseFloat(data.lowPrice),
+        time: (data.startIntervalTimestamp / 1000) as UTCTimestamp,
+    };
+};
+
+const convertRealtimeCandlestickToHistogramData = (data: IRealtimeCandleData): HistogramData => {
+    return {
+        time: (data.startIntervalTimestamp / 1000) as UTCTimestamp,
+        value: parseFloat(data.volume),
+        color: pickVolumeColor({
+            open: parseFloat(data.openPrice),
+            close: parseFloat(data.closePrice),
+            high: parseFloat(data.highPrice),
+            low: parseFloat(data.lowPrice),
+        }),
+    };
+};
+
 const defaultChartData: IChartData = {
     candlestickData: [],
     histogramData: [],
@@ -100,8 +125,11 @@ const defaultChartData: IChartData = {
 export default function TradingViewChart(props: ITradingViewChartProps) {
     const { symbol, timeframe, mode, predictedData } = props;
 
+    const { token } = theme.useToken();
+
     // custom hook
     const { socket, methods } = useSocket();
+    const messageApi = useAntMessage();
 
     // refs
     const joinedRoom = useRef(false);
@@ -111,7 +139,6 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
     const subChart = useRef<IChartApi | null>(null);
     const chartSeries = useRef<{
         barSeries: ISeriesApi<"Bar">;
-        baselineSeries: ISeriesApi<"Baseline">;
         histogramSeries: ISeriesApi<"Histogram">;
         candlestickSeries: ISeriesApi<"Candlestick">;
         predictedCandleSeries: ISeriesApi<"Candlestick">;
@@ -124,9 +151,11 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
     const [data, setData] = useState<IChartData>(defaultChartData);
     const [hoveringCandleInfo, setHoveringCandleInfo] = useState<ICandleInfo>({});
     const [displaySubChart, setDisplaySubChart] = useState(false);
-    const [innerTimeframe, setInnerTimeframe] = useState<ITimeframe>(TIMEFRAME_OPTIONS["3M"]);
+    const [innerTimeframe, setInnerTimeframe] = useState<ITimeframe>(TIMEFRAME_OPTIONS["5D"]);
     const [innerSymbol, setInnerSymbol] = useState<ISymbol | null>(null);
     const [currentRoomId, setCurrentRoomId] = useState<string>("");
+    const [isFetchingTimeframeData, setIsFetchingTimeframeData] = useState(true);
+    const [autoFitChartTime, setAutoFitChartTime] = useState(true);
 
     // socket handlers
     const handleReceivedRealtimeCandle = useCallback(
@@ -163,29 +192,8 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
                 return {
                     ...prev,
-                    candlestickData: [
-                        ...prev.candlestickData,
-                        {
-                            open: parseFloat(data.openPrice),
-                            close: parseFloat(data.closePrice),
-                            high: parseFloat(data.highPrice),
-                            low: parseFloat(data.lowPrice),
-                            time: (data.startIntervalTimestamp / 1000) as UTCTimestamp,
-                        },
-                    ],
-                    histogramData: [
-                        ...prev.histogramData,
-                        {
-                            time: (data.startIntervalTimestamp / 1000) as UTCTimestamp,
-                            value: parseFloat(data.volume),
-                            color: pickVolumeColor({
-                                open: parseFloat(data.openPrice),
-                                close: parseFloat(data.closePrice),
-                                high: parseFloat(data.highPrice),
-                                low: parseFloat(data.lowPrice),
-                            }),
-                        },
-                    ],
+                    candlestickData: [...prev.candlestickData, convertRealtimeCandlestickToCandlestickData(data)],
+                    histogramData: [...prev.histogramData, convertRealtimeCandlestickToHistogramData(data)],
                 };
             });
         },
@@ -194,13 +202,13 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
     // chart initialization effect
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         // init main chart
         if (chart.current !== null) return;
 
         chart.current = createChart(chartRef.current as HTMLElement, { autoSize: true });
         chartSeries.current = {
             barSeries: chart.current.addBarSeries(),
-            baselineSeries: chart.current.addBaselineSeries(),
             candlestickSeries: chart.current.addCandlestickSeries({
                 upColor: CHART_COLORS.UP,
                 downColor: CHART_COLORS.DOWN,
@@ -255,6 +263,7 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
     // effect when predicted data was updated
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         if (predictedData == null) {
             setData((val) => ({ ...val, predictedData: defaultChartData.predictedData }));
             return;
@@ -291,10 +300,11 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
             setData((val) => ({ ...val, predictedData: { ...val.predictedData, nextTimeframe: undefined } }));
             setDisplaySubChart(false);
         }
-    }, [predictedData]);
+    }, [predictedData, isFetchingTimeframeData]);
 
     // effect to update chart when data changed
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         if (chartSeries.current === null) return;
 
         chartSeries.current.candlestickSeries.setData(data.candlestickData);
@@ -303,18 +313,25 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
         chartSeries.current.histogramSeries.setData(data.histogramData);
 
-        chart.current?.timeScale().fitContent();
+        let autoScalePrice = false;
+        if (autoFitChartTime) {
+            chart.current?.timeScale().fitContent();
+            autoScalePrice = true;
+            setAutoFitChartTime(false);
+        }
         chartSeries.current.candlestickSeries.priceScale().applyOptions({
             scaleMargins: {
                 top: 0,
                 bottom: 0.3, // lowest point of the series will be 30% away from the bottom
             },
+            autoScale: autoScalePrice,
         });
         chartSeries.current.histogramSeries.priceScale().applyOptions({
             scaleMargins: {
                 top: 0.9, // highest point of the series will be 70% away from the top
                 bottom: 0,
             },
+            autoScale: autoScalePrice,
         });
 
         setHoveringCandleInfo(getLatestCandleData(data.candlestickData));
@@ -328,14 +345,16 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
         const nextTimeframe = data.predictedData.nextTimeframe;
         subChartSeries.current.predictedLines.forEach((line, index) => line.setData(nextTimeframe[index].data));
-    }, [data]);
+    }, [data, isFetchingTimeframeData, autoFitChartTime]);
 
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         if (displaySubChart) subChart.current?.timeScale().fitContent();
-    }, [displaySubChart]);
+    }, [displaySubChart, isFetchingTimeframeData]);
 
     // effect executed when symbol changed
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         if (symbol === null) return;
         if (socket) {
             if (symbol.symbol !== innerSymbol?.symbol) {
@@ -349,9 +368,10 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
             methods.initSocket();
             joinedRoom.current = false;
         }
-    }, [symbol, innerSymbol, currentRoomId]);
+    }, [symbol, innerSymbol, currentRoomId, isFetchingTimeframeData]);
 
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         if (!socket) return;
         if (!joinedRoom.current) return;
 
@@ -359,17 +379,19 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
         joinedRoom.current = false;
         setData(defaultChartData);
         setInnerTimeframe(timeframe);
-    }, [timeframe, innerTimeframe]);
+    }, [timeframe, innerTimeframe, isFetchingTimeframeData]);
 
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         if (!socket) return;
 
         socket.removeAllListeners(SOCKET_LISTEN_EVENT.realtime_candle);
 
         socket.on(SOCKET_LISTEN_EVENT.realtime_candle, handleReceivedRealtimeCandle);
-    }, [socket, handleReceivedRealtimeCandle]);
+    }, [socket, handleReceivedRealtimeCandle, isFetchingTimeframeData]);
 
     useEffect(() => {
+        if (isFetchingTimeframeData) return;
         if (!socket) return;
         if (joinedRoom.current) return;
         if (innerSymbol === null) return;
@@ -378,7 +400,45 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
         socket.emit(SOCKET_EMIT_EVENT.join_room, roomId);
         joinedRoom.current = true;
         setCurrentRoomId(roomId);
-    }, [socket, innerSymbol, innerTimeframe]);
+    }, [socket, innerSymbol, innerTimeframe, isFetchingTimeframeData]);
+
+    useEffect(() => {
+        if (symbol === null) return;
+        const fetchTimeframeData = async () => {
+            setIsFetchingTimeframeData(true);
+            setAutoFitChartTime(true);
+            try {
+                const res = await HttpService.get<IRealtimeCandleData[]>(
+                    `/v1/symbols/${symbol.symbol}/candles?interval=${timeframe.interval}`
+                );
+
+                if (res.data) {
+                    const respData = res.data;
+                    setData((prev) => {
+                        const candleStickData: CandlestickData[] = [];
+                        const histogramData: HistogramData[] = [];
+
+                        respData.forEach((symbol) => {
+                            candleStickData.push(convertRealtimeCandlestickToCandlestickData(symbol));
+                            histogramData.push(convertRealtimeCandlestickToHistogramData(symbol));
+                        });
+
+                        return {
+                            ...prev,
+                            candlestickData: candleStickData,
+                            histogramData: histogramData,
+                        };
+                    });
+                }
+            } catch (error) {
+                console.error(error);
+                messageApi.error("There was an error when fetching timeframe data");
+            }
+            setIsFetchingTimeframeData(false);
+        };
+
+        fetchTimeframeData();
+    }, [symbol, timeframe]);
 
     return (
         <>
@@ -387,6 +447,21 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
                 className={displaySubChart ? "trading-view-chart__container--splitted-half" : undefined}
                 style={{ width: "100%", height: "100%" }}
             >
+                {isFetchingTimeframeData && (
+                    <div className="trading-view-chart__fetching-indicator__backdrop">
+                        <div className="fetching-indicator__icon">
+                            <Space
+                                direction="vertical"
+                                style={{ color: token.colorPrimary, alignItems: "center" }}
+                                size="middle"
+                            >
+                                <LoadingOutlined style={{ fontSize: 40 }} />
+                                Fetching data ...
+                            </Space>
+                        </div>
+                    </div>
+                )}
+
                 {/* Chart element */}
                 <div ref={chartRef} id="trading-view-chart__main-chart"></div>
                 <div ref={subChartRef} id="trading-view-chart__sub-chart"></div>
