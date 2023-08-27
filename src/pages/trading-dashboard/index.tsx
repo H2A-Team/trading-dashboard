@@ -43,14 +43,14 @@ export const TIMEFRAME_OPTIONS: { [key: string]: ITimeframe } = {
         period: "1M",
         interval: "30m",
     },
-    "3M": {
-        period: "3M",
-        interval: "1h",
-    },
-    "6M": {
-        period: "6M",
-        interval: "2h",
-    },
+    // "3M": {
+    //     period: "3M",
+    //     interval: "1h",
+    // },
+    // "6M": {
+    //     period: "6M",
+    //     interval: "2h",
+    // },
 };
 
 export type TIMEFRAME_OPTION = keyof typeof TIMEFRAME_OPTIONS;
@@ -226,7 +226,7 @@ export default function TradingDashboard() {
     const messageApi = useAntMessage();
 
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [timeframe, setTimeframe] = useState<ITimeframe>(TIMEFRAME_OPTIONS["3M"]);
+    const [timeframe, setTimeframe] = useState<ITimeframe>(TIMEFRAME_OPTIONS["5D"]);
     const [symbolsList, setSymbolsList] = useState<ISymbol[]>([]);
     const [symbolSearch, setSymbolSearch] = useState<string>("");
     const [selectedSymbol, setSelectedSymbol] = useState<ISymbol | null>(null);

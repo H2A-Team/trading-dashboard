@@ -21,12 +21,26 @@
         }
 
         & > #trading-view-chart__sub-chart {
-            // top: calc(50% + calc(var(--chart-gap) / 2));
             top: calc(50% - calc(var(--chart-gap) / 2));
             opacity: 1;
 
             border-top: var(--chart-gap) solid var(--background-color);
         }
+    }
+
+    & > .trading-view-chart__fetching-indicator__backdrop {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+
+        background-color: rgb(255, 255, 255, 0.8);
+
+        display: flex;
+        justify-content: center;
+        align-items: center;
+
+        user-select: none;
+        -webkit-user-select: none;
     }
 }
 
