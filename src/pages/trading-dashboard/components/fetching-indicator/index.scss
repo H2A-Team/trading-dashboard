@@ -1,0 +1,18 @@
+.trading-view-chart__fetching-indicator__backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+
+    background-color: rgb(255, 255, 255);
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    user-select: none;
+    -webkit-user-select: none;
+
+    &.trading-view-chart__fetching-indicator__backdrop--see-through {
+        background-color: rgb(255, 255, 255, 0.8);
+    }
+}
