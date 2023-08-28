@@ -8,13 +8,27 @@ import {
     createChart,
 } from "lightweight-charts";
 import { ElementRef, useEffect, useRef, useState } from "react";
-import { ICandleInfo, IChartData, getLatestCandleData, pickCandleColor } from "../..";
+import {
+    ICandleInfo,
+    IChartData,
+    IRealtimeCandleData,
+    getLatestCandleData,
+    pickCandleColor,
+    pickVolumeColor,
+} from "../..";
 import FetchingIndicator from "../../../fetching-indicator";
 import "./index.scss";
 import { CHART_COLORS } from "../../../../constants";
+import { ISymbol, ITimeframe } from "../../../..";
+import { IPredictOptionModalOptions } from "../../../predict-option-modal";
+import { HttpService } from "../../../../../../services/http-service";
+import { useAntMessage } from "../../../../../../contexts/ant-message";
 
 interface INextCandleChartProps {
     intialData: IChartData;
+    timeframe: ITimeframe;
+    selectedOption: IPredictOptionModalOptions;
+    symbol: ISymbol;
 }
 
 const defaultChartData: IChartData = {
@@ -22,22 +36,10 @@ const defaultChartData: IChartData = {
     histogramData: [],
 };
 
-const fakePredictedData: {
-    candle: CandlestickData;
-    volume: HistogramData;
-} = {
-    candle: {
-        time: "",
-        open: 111.26 + 1537,
-        high: 140.26 + 1537,
-        low: 70.66 + 1537,
-        close: 85.26 + 1537,
-    },
-    volume: { time: "", value: 26, color: CHART_COLORS.DARKER_DOWN },
-};
-
 export default function NextCandleChart(props: INextCandleChartProps) {
-    const { intialData } = props;
+    const { intialData, timeframe, selectedOption, symbol } = props;
+
+    const messageApi = useAntMessage();
 
     const mouseHandlerRef = useRef<MouseEventHandler>(() => {});
     const chartRef = useRef<ElementRef<"div"> | null>(null);
@@ -54,13 +56,7 @@ export default function NextCandleChart(props: INextCandleChartProps) {
     const [predictedCandle, setPredictedCandle] = useState<{
         candle: CandlestickData;
         volume: HistogramData;
-    } | null>(() => {
-        const time = (new Date().valueOf() / 1000) as UTCTimestamp;
-        return {
-            candle: { ...fakePredictedData.candle, time: time },
-            volume: { ...fakePredictedData.volume, time: time },
-        };
-    });
+    } | null>(null);
     const [hoveringCandleInfo, setHoveringCandleInfo] = useState<ICandleInfo>({});
     const [isLoading, setIsLoading] = useState(false);
 
@@ -154,8 +150,6 @@ export default function NextCandleChart(props: INextCandleChartProps) {
     useEffect(() => {
         if (chartSeries.current === null) return;
 
-        console.log(data);
-
         chartSeries.current.candlestickSeries.setData(data.candlestickData);
 
         if (predictedCandle) {
@@ -200,9 +194,50 @@ export default function NextCandleChart(props: INextCandleChartProps) {
     }, [data, predictedCandle]);
 
     useEffect(() => {
-        console.log("Call to get predicted candle");
         // TODO: call api to get predicted candle > append to data.predictedCandleSeries (check if there is a realtime candle then remove it before add)
-        setData(intialData);
+        const fetch = async () => {
+            setIsLoading(true);
+            try {
+                const res = (await HttpService.post(`/v1/symbols/${symbol.symbol}/predict-candle`, {
+                    model: selectedOption.selectedModel?.key,
+                    interval: timeframe.interval,
+                })) as IRealtimeCandleData;
+
+                if (res) {
+                    setPredictedCandle(() => {
+                        const time = (res.startIntervalTimestamp / 1000) as UTCTimestamp;
+                        return {
+                            candle: {
+                                time: time,
+                                open: parseFloat(res.openPrice),
+                                high: parseFloat(res.highPrice),
+                                low: parseFloat(res.lowPrice),
+                                close: parseFloat(res.closePrice),
+                            },
+                            volume: {
+                                time: time,
+                                value: parseFloat(res.volume),
+                                color: pickVolumeColor({
+                                    open: parseFloat(res.openPrice),
+                                    high: parseFloat(res.highPrice),
+                                    low: parseFloat(res.lowPrice),
+                                    close: parseFloat(res.closePrice),
+                                }),
+                            },
+                        };
+                    });
+                    setData(intialData);
+                } else {
+                    messageApi.info("No prediction data");
+                }
+            } catch (error) {
+                console.error(error);
+                messageApi.error("There was an error when fetching prediction data");
+            }
+            setIsLoading(false);
+        };
+
+        fetch();
     }, []);
 
     return (

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Form, Modal, Select, Space } from "antd";
-import { FEATURE_OPTION, MODEL_OPTION } from "../..";
+import { FEATURE_OPTION, MODEL_OPTION, TRADING_DASHBOARD_MODE } from "../..";
 
 export interface IPredictModelOption {
     key: MODEL_OPTION;
@@ -23,13 +23,14 @@ export interface IPredictOptionModalOptions {
 interface IPredictOptionModalProps {
     open: boolean;
     options: IPredictOptionModalOptions;
+    mode: TRADING_DASHBOARD_MODE;
     onConfirm: (form: IPredictOptionForm) => void;
     onCancel: () => void;
 }
 
 export interface IPredictOptionForm {
-    feature: IPredictFeatureOption;
-    model: IPredictModelOption;
+    feature: IPredictFeatureOption | null;
+    model: IPredictModelOption | null;
 }
 
 const defaultOptions: IPredictOptionModalOptions = {
@@ -41,7 +42,7 @@ const defaultOptions: IPredictOptionModalOptions = {
 };
 
 export default function PredictOptionModal(props: IPredictOptionModalProps) {
-    const { open, options, onConfirm, onCancel } = props;
+    const { open, options, mode, onConfirm, onCancel } = props;
     const [modalOptions, setModalOptions] = useState<IPredictOptionModalOptions>(defaultOptions);
     const [form] = Form.useForm();
 
@@ -57,22 +58,21 @@ export default function PredictOptionModal(props: IPredictOptionModalProps) {
         }
     }, [open, options]);
 
-    const onFinish = (formData: { feature: string; model: string }) => {
+    const onFinish = (formData: { feature: string | null; model: string | null }) => {
         onConfirm &&
             onConfirm({
-                feature: {
-                    key: formData.feature as FEATURE_OPTION,
-                    label: `${modalOptions.featuresList.find((i) => i.key === formData.feature)?.label}`,
-                },
-                model: (modalOptions.modelsList.find((i) => i.key === formData.model) as IPredictModelOption) || {
-                    key: "undefined",
-                    label: "undefined",
-                },
+                feature: formData.feature
+                    ? {
+                          key: formData.feature as FEATURE_OPTION,
+                          label: `${modalOptions.featuresList.find((i) => i.key === formData.feature)?.label}`,
+                      }
+                    : null,
+                model: (modalOptions.modelsList.find((i) => i.key === formData.model) as IPredictModelOption) || null,
             });
     };
 
     const onFinishFailed = () => {
-        console.log("Submit failed!");
+        console.log("Submit failed");
     };
 
     const handleSubmit = () => {
@@ -115,11 +115,13 @@ export default function PredictOptionModal(props: IPredictOptionModalProps) {
                             }))}
                         />
                     </Form.Item>
-
                     <Form.Item
                         name="feature"
                         label="Feature"
-                        rules={[{ required: true, message: "Please select feature for prediction" }]}
+                        rules={[
+                            { required: mode === "predict-timeframe", message: "Please select feature for prediction" },
+                        ]}
+                        style={{ display: `${mode === "predict-timeframe" ? "block" : "none"}` }}
                     >
                         <Select
                             allowClear

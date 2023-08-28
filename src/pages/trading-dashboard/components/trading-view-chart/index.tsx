@@ -386,7 +386,14 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
             }
 
             case "predict-candle": {
-                return <NextCandleChart intialData={data} />;
+                return (
+                    <NextCandleChart
+                        intialData={data}
+                        timeframe={innerTimeframe}
+                        selectedOption={selectedPredictionOption}
+                        symbol={innerSymbol as ISymbol}
+                    />
+                );
             }
 
             case "predict-timeframe": {
@@ -394,6 +401,9 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
                 return SUB_CHART_COMPONENT[selectedPredictionOption.selectedFeature.key]({
                     chartName: selectedPredictionOption.selectedFeature,
+                    timeframe: innerTimeframe,
+                    selectedOption: selectedPredictionOption,
+                    symbol: innerSymbol as ISymbol,
                 });
             }
 

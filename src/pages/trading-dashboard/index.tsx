@@ -114,6 +114,11 @@ const defaultPredictOptionModalOptions: IPredictOptionModalOptions = {
     selectedFeature: null,
 };
 
+const defaultCloseModalNextActionState = {
+    action: () => {},
+    toMode: null,
+};
+
 export default function TradingDashboard() {
     const { token } = theme.useToken();
     const { isMatching: isSmallScreen } = useQuery("(max-width: 1000px)");
@@ -129,6 +134,10 @@ export default function TradingDashboard() {
     const [mode, setMode] = useState<TRADING_DASHBOARD_MODE>("normal");
     const [openPredictOptionModal, setOpenPredictOptionModal] = useState(false);
     const [predictOptions, setPredictOptions] = useState<IPredictOptionModalOptions>(defaultPredictOptionModalOptions);
+    const [closeModalNextAction, setCloseModalNextAction] = useState<{
+        action: (form: IPredictOptionForm) => void;
+        toMode: TRADING_DASHBOARD_MODE | null;
+    }>(defaultCloseModalNextActionState);
 
     useEffect(() => {
         const fetch = async () => {
@@ -158,26 +167,35 @@ export default function TradingDashboard() {
         setSelectedSymbol(symbol);
     };
 
+    const handlePredictNextTimeframe = (form: IPredictOptionForm) => {
+        setPredictOptions((val) => ({ ...val, selectedFeature: form.feature, selectedModel: form.model }));
+        setOpenPredictOptionModal(false);
+        setMode("predict-timeframe");
+    };
+
+    const handlePredictNextCandle = (form: IPredictOptionForm) => {
+        setPredictOptions((val) => ({ ...val, selectedModel: form.model }));
+        setOpenPredictOptionModal(false);
+        setMode("predict-candle");
+    };
+
     const handlePredictBtn: MenuProps["onClick"] = ({ key }) => {
         if (selectedSymbol === null) return;
         switch (key) {
             case PREDICT_OPTIONS.candle.key: {
-                setMode("predict-candle");
+                setPredictOptions(defaultPredictOptionModalOptions);
+                setCloseModalNextAction({ action: handlePredictNextCandle, toMode: "predict-candle" });
+                setOpenPredictOptionModal(true);
                 break;
             }
 
             case PREDICT_OPTIONS.timeframe.key: {
                 setPredictOptions(defaultPredictOptionModalOptions);
+                setCloseModalNextAction({ action: handlePredictNextTimeframe, toMode: "predict-timeframe" });
                 setOpenPredictOptionModal(true);
                 break;
             }
         }
-    };
-
-    const handlePredictNextTimeframe = (form: IPredictOptionForm) => {
-        setPredictOptions((val) => ({ ...val, selectedFeature: form.feature, selectedModel: form.model }));
-        setOpenPredictOptionModal(false);
-        setMode("predict-timeframe");
     };
 
     const handleQuitPredictionMode = () => {
@@ -367,11 +385,9 @@ export default function TradingDashboard() {
                                         </Dropdown>
                                     ) : (
                                         <Space size="small">
-                                            {mode === "predict-timeframe" && (
-                                                <Button type="text" onClick={() => setOpenPredictOptionModal(true)}>
-                                                    <SettingOutlined />
-                                                </Button>
-                                            )}
+                                            <Button type="text" onClick={() => setOpenPredictOptionModal(true)}>
+                                                <SettingOutlined />
+                                            </Button>
                                             <Popconfirm
                                                 title="Quit prediction mode"
                                                 description="Are you sure to quit the prediction mode?"
@@ -405,7 +421,8 @@ export default function TradingDashboard() {
             <PredictOptionModal
                 open={openPredictOptionModal}
                 options={predictOptions}
-                onConfirm={handlePredictNextTimeframe}
+                mode={closeModalNextAction.toMode ?? mode}
+                onConfirm={closeModalNextAction.action}
                 onCancel={() => setOpenPredictOptionModal(false)}
             />
         </>
