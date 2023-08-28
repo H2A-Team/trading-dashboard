@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { Form, Modal, Select, Space } from "antd";
+import { FEATURE_OPTION, MODEL_OPTION } from "../..";
 
 export interface IPredictModelOption {
-    key: string;
+    key: MODEL_OPTION;
     label: string;
 }
 
 export interface IPredictFeatureOption {
-    key: string;
+    key: FEATURE_OPTION;
     label: string;
 }
 
@@ -16,7 +17,7 @@ export interface IPredictOptionModalOptions {
     selectedModel: IPredictModelOption | null; // cannot select more than 1 model to predict at a time
 
     featuresList: IPredictFeatureOption[];
-    selectedFeature: IPredictFeatureOption[]; // can select multiple features to predict at a time
+    selectedFeature: IPredictFeatureOption | null; // cannot select more than 1 feature to predict at a time
 }
 
 interface IPredictOptionModalProps {
@@ -27,7 +28,7 @@ interface IPredictOptionModalProps {
 }
 
 export interface IPredictOptionForm {
-    feature: IPredictFeatureOption[];
+    feature: IPredictFeatureOption;
     model: IPredictModelOption;
 }
 
@@ -36,7 +37,7 @@ const defaultOptions: IPredictOptionModalOptions = {
     selectedModel: null,
 
     featuresList: [],
-    selectedFeature: [],
+    selectedFeature: null,
 };
 
 export default function PredictOptionModal(props: IPredictOptionModalProps) {
@@ -49,21 +50,21 @@ export default function PredictOptionModal(props: IPredictOptionModalProps) {
             setModalOptions(() => {
                 form.setFieldsValue({
                     model: options.selectedModel?.key,
-                    feature: options.selectedFeature.map((item) => item.key),
+                    feature: options.selectedFeature?.key,
                 });
                 return options;
             });
         }
     }, [open, options]);
 
-    const onFinish = (formData: { feature: string[]; model: string }) => {
+    const onFinish = (formData: { feature: string; model: string }) => {
         onConfirm &&
             onConfirm({
-                feature: formData.feature.map((item) => ({
-                    key: item,
-                    label: `${modalOptions.featuresList.find((i) => i.key === item)?.label}`,
-                })),
-                model: modalOptions.modelsList.find((i) => i.key === formData.model) || {
+                feature: {
+                    key: formData.feature as FEATURE_OPTION,
+                    label: `${modalOptions.featuresList.find((i) => i.key === formData.feature)?.label}`,
+                },
+                model: (modalOptions.modelsList.find((i) => i.key === formData.model) as IPredictModelOption) || {
                     key: "undefined",
                     label: "undefined",
                 },
@@ -121,10 +122,14 @@ export default function PredictOptionModal(props: IPredictOptionModalProps) {
                         rules={[{ required: true, message: "Please select feature for prediction" }]}
                     >
                         <Select
-                            mode="multiple"
                             allowClear
+                            showSearch
                             style={{ width: "100%" }}
                             placeholder="Select feature to predict"
+                            optionFilterProp="children"
+                            filterOption={(input, option) =>
+                                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                            }
                             options={options.featuresList.map((feature) => ({
                                 value: feature.key,
                                 label: feature.label,

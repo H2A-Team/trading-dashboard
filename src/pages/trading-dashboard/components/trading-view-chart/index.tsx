@@ -9,14 +9,21 @@ import {
     LineData,
     UTCTimestamp,
 } from "lightweight-charts";
-import "./index.scss";
 import { ISymbol, ITimeframe, TIMEFRAME_OPTIONS, TRADING_DASHBOARD_MODE } from "../..";
-import { EyeOutlined, LoadingOutlined } from "@ant-design/icons";
-import { Space, theme } from "antd";
+import { EyeOutlined } from "@ant-design/icons";
+import { Space } from "antd";
 import useSocket from "../../../../hooks/use-socket";
 import { SOCKET_EMIT_EVENT, SOCKET_LISTEN_EVENT } from "../../../../constants/socket-constants";
 import { useAntMessage } from "../../../../contexts/ant-message";
 import { HttpService } from "../../../../services/http-service";
+import { IPredictOptionModalOptions } from "../predict-option-modal";
+import ClosePriceChart from "./sub-chart/close-price-chart";
+import RocChart from "./sub-chart/roc-chart";
+import { ISubChartProps } from "./sub-chart/interfaces";
+import FetchingIndicator from "../fetching-indicator";
+import "./index.scss";
+import NextCandleChart from "./sub-chart/next-candle-chart";
+import { CHART_COLORS } from "../../constants";
 
 export interface IPredictedLine {
     label: string;
@@ -31,24 +38,23 @@ export interface IPredictedData {
 interface ITradingViewChartProps {
     symbol: ISymbol | null;
     mode: TRADING_DASHBOARD_MODE;
-    predictedData?: IPredictedData;
+    selectedPredictionOption: IPredictOptionModalOptions;
     timeframe: ITimeframe;
 }
 
-interface IChartData {
+export interface IChartData {
     candlestickData: CandlestickData[];
     histogramData: HistogramData[];
-    predictedData: IPredictedData;
 }
 
-interface ICandleInfo {
+export interface ICandleInfo {
     high?: number;
     low?: number;
     close?: number;
     open?: number;
 }
 
-interface IRealtimeCandleData {
+export interface IRealtimeCandleData {
     binanceEventTimestamp: number;
     symbol: string;
     startIntervalTimestamp: number;
@@ -61,15 +67,7 @@ interface IRealtimeCandleData {
     volume: string;
 }
 
-export const CHART_COLORS = {
-    UP: "#26a69a",
-    DARKER_UP: "#c3e7d5",
-    DOWN: "#ef5350",
-    DARKER_DOWN: "#f8c1c6",
-    LINE: ["#2962ff", "#ff6742"],
-};
-
-const getLatestCandleData = (candleStickData: CandlestickData[]): ICandleInfo => {
+export const getLatestCandleData = (candleStickData: CandlestickData[]): ICandleInfo => {
     if (candleStickData.length === 0) return {};
     const latestCandle = candleStickData[candleStickData.length - 1];
 
@@ -81,19 +79,19 @@ const getLatestCandleData = (candleStickData: CandlestickData[]): ICandleInfo =>
     };
 };
 
-const pickCandleColor = (candle: ICandleInfo): string | undefined => {
+export const pickCandleColor = (candle: ICandleInfo): string | undefined => {
     if (candle.open == null || candle.close == null) return undefined;
 
     return candle.open <= candle.close ? CHART_COLORS.UP : CHART_COLORS.DOWN;
 };
 
-const pickVolumeColor = (candle: ICandleInfo): string | undefined => {
+export const pickVolumeColor = (candle: ICandleInfo): string | undefined => {
     if (candle.open == null || candle.close == null) return undefined;
 
     return candle.open <= candle.close ? CHART_COLORS.DARKER_UP : CHART_COLORS.DARKER_DOWN;
 };
 
-const convertRealtimeCandlestickToCandlestickData = (data: IRealtimeCandleData): CandlestickData => {
+export const convertRealtimeCandlestickToCandlestickData = (data: IRealtimeCandleData): CandlestickData => {
     return {
         open: parseFloat(data.openPrice),
         close: parseFloat(data.closePrice),
@@ -103,7 +101,7 @@ const convertRealtimeCandlestickToCandlestickData = (data: IRealtimeCandleData):
     };
 };
 
-const convertRealtimeCandlestickToHistogramData = (data: IRealtimeCandleData): HistogramData => {
+export const convertRealtimeCandlestickToHistogramData = (data: IRealtimeCandleData): HistogramData => {
     return {
         time: (data.startIntervalTimestamp / 1000) as UTCTimestamp,
         value: parseFloat(data.volume),
@@ -119,13 +117,16 @@ const convertRealtimeCandlestickToHistogramData = (data: IRealtimeCandleData): H
 const defaultChartData: IChartData = {
     candlestickData: [],
     histogramData: [],
-    predictedData: {},
+};
+
+// format: key: component
+const SUB_CHART_COMPONENT: { [key: string]: (props: ISubChartProps) => JSX.Element } = {
+    close: (props: ISubChartProps) => <ClosePriceChart {...props} />,
+    roc: (props: ISubChartProps) => <RocChart {...props} />,
 };
 
 export default function TradingViewChart(props: ITradingViewChartProps) {
-    const { symbol, timeframe, mode, predictedData } = props;
-
-    const { token } = theme.useToken();
+    const { symbol, timeframe, mode, selectedPredictionOption } = props;
 
     // custom hook
     const { socket, methods } = useSocket();
@@ -133,18 +134,13 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
 
     // refs
     const joinedRoom = useRef(false);
+    const mouseHandlerRef = useRef<MouseEventHandler>(() => {});
     const chartRef = useRef<ElementRef<"div"> | null>(null);
-    const subChartRef = useRef<ElementRef<"div"> | null>(null);
     const chart = useRef<IChartApi | null>(null);
-    const subChart = useRef<IChartApi | null>(null);
     const chartSeries = useRef<{
         barSeries: ISeriesApi<"Bar">;
         histogramSeries: ISeriesApi<"Histogram">;
         candlestickSeries: ISeriesApi<"Candlestick">;
-        predictedCandleSeries: ISeriesApi<"Candlestick">;
-    } | null>(null);
-    const subChartSeries = useRef<{
-        predictedLines?: ISeriesApi<"Line">[];
     } | null>(null);
 
     // states
@@ -204,35 +200,30 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
     useEffect(() => {
         if (isFetchingTimeframeData) return;
         // init main chart
-        if (chart.current !== null) return;
+        if (chart.current === null) {
+            chart.current = createChart(chartRef.current as HTMLElement, { autoSize: true });
+            chartSeries.current = {
+                barSeries: chart.current.addBarSeries(),
+                candlestickSeries: chart.current.addCandlestickSeries({
+                    upColor: CHART_COLORS.UP,
+                    downColor: CHART_COLORS.DOWN,
+                    borderVisible: false,
+                    wickUpColor: CHART_COLORS.UP,
+                    wickDownColor: CHART_COLORS.DOWN,
+                }),
+                histogramSeries: chart.current.addHistogramSeries({
+                    priceFormat: {
+                        type: "volume",
+                    },
+                    priceScaleId: "",
+                }),
+            };
+        }
 
-        chart.current = createChart(chartRef.current as HTMLElement, { autoSize: true });
-        chartSeries.current = {
-            barSeries: chart.current.addBarSeries(),
-            candlestickSeries: chart.current.addCandlestickSeries({
-                upColor: CHART_COLORS.UP,
-                downColor: CHART_COLORS.DOWN,
-                borderVisible: false,
-                wickUpColor: CHART_COLORS.UP,
-                wickDownColor: CHART_COLORS.DOWN,
-            }),
-            predictedCandleSeries: chart.current.addCandlestickSeries({
-                upColor: CHART_COLORS.UP,
-                downColor: CHART_COLORS.DOWN,
-                borderVisible: false,
-                wickUpColor: CHART_COLORS.UP,
-                wickDownColor: CHART_COLORS.DOWN,
-                title: "Predicted",
-            }),
-            histogramSeries: chart.current.addHistogramSeries({
-                priceFormat: {
-                    type: "volume",
-                },
-                priceScaleId: "",
-            }),
-        };
+        chart.current.unsubscribeCrosshairMove(mouseHandlerRef.current);
+        chart.current.unsubscribeClick(mouseHandlerRef.current);
 
-        const mouseHandler: MouseEventHandler = (param) => {
+        mouseHandlerRef.current = (param) => {
             if (param.point === undefined || !param.time || param.point.x < 0 || param.point.y < 0) {
                 setHoveringCandleInfo(getLatestCandleData(data.candlestickData));
             } else {
@@ -241,13 +232,6 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
                     return;
                 }
                 let seriesData: any = param.seriesData.get(chartSeries.current.candlestickSeries);
-                if (!seriesData) {
-                    seriesData = param.seriesData.get(chartSeries.current.predictedCandleSeries);
-                    if (!seriesData) {
-                        setHoveringCandleInfo(getLatestCandleData(data.candlestickData));
-                        return;
-                    }
-                }
                 setHoveringCandleInfo({
                     open: seriesData?.open,
                     high: seriesData?.high,
@@ -257,50 +241,20 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
             }
         };
 
-        chart.current.subscribeCrosshairMove(mouseHandler);
-        chart.current.subscribeClick(mouseHandler);
+        chart.current.subscribeCrosshairMove(mouseHandlerRef.current);
+        chart.current.subscribeClick(mouseHandlerRef.current);
     });
 
     // effect when predicted data was updated
     useEffect(() => {
         if (isFetchingTimeframeData) return;
-        if (predictedData == null) {
-            setData((val) => ({ ...val, predictedData: defaultChartData.predictedData }));
+        if (mode === "normal") {
+            setDisplaySubChart(false);
             return;
         }
 
-        if (predictedData.nextCandle != null) {
-            setData((val) => ({
-                ...val,
-                predictedData: { nextCandle: predictedData.nextCandle as CandlestickData[] },
-            }));
-        } else setData((val) => ({ ...val, predictedData: { ...val.predictedData, nextCandle: undefined } }));
-
-        if (predictedData.nextTimeframe != null) {
-            // init sub chart
-            if (subChart.current === null)
-                subChart.current = createChart(subChartRef.current as HTMLElement, { autoSize: true });
-            const ref = subChart.current;
-
-            if (subChartSeries.current !== null && subChartSeries.current.predictedLines != null) {
-                subChartSeries.current.predictedLines.forEach((item) => ref.removeSeries(item));
-                subChartSeries.current.predictedLines = undefined;
-            }
-            subChartSeries.current = {
-                predictedLines: predictedData.nextTimeframe.map((line, index) =>
-                    ref.addLineSeries({ title: line.label, color: CHART_COLORS.LINE[index % CHART_COLORS.LINE.length] })
-                ),
-            };
-            setData((val) => ({
-                ...val,
-                predictedData: { nextTimeframe: predictedData.nextTimeframe as IPredictedLine[] },
-            }));
-            setDisplaySubChart(true);
-        } else {
-            setData((val) => ({ ...val, predictedData: { ...val.predictedData, nextTimeframe: undefined } }));
-            setDisplaySubChart(false);
-        }
-    }, [predictedData, isFetchingTimeframeData]);
+        setDisplaySubChart(true);
+    }, [mode, isFetchingTimeframeData]);
 
     // effect to update chart when data changed
     useEffect(() => {
@@ -308,8 +262,6 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
         if (chartSeries.current === null) return;
 
         chartSeries.current.candlestickSeries.setData(data.candlestickData);
-
-        chartSeries.current.predictedCandleSeries.setData(data.predictedData.nextCandle || []);
 
         chartSeries.current.histogramSeries.setData(data.histogramData);
 
@@ -328,29 +280,14 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
         });
         chartSeries.current.histogramSeries.priceScale().applyOptions({
             scaleMargins: {
-                top: 0.9, // highest point of the series will be 70% away from the top
+                top: 0.8, // highest point of the series will be 70% away from the top
                 bottom: 0,
             },
             autoScale: autoScalePrice,
         });
 
         setHoveringCandleInfo(getLatestCandleData(data.candlestickData));
-
-        if (
-            subChartSeries.current === null ||
-            subChartSeries.current.predictedLines == null ||
-            data.predictedData.nextTimeframe == null
-        )
-            return;
-
-        const nextTimeframe = data.predictedData.nextTimeframe;
-        subChartSeries.current.predictedLines.forEach((line, index) => line.setData(nextTimeframe[index].data));
     }, [data, isFetchingTimeframeData, autoFitChartTime]);
-
-    useEffect(() => {
-        if (isFetchingTimeframeData) return;
-        if (displaySubChart) subChart.current?.timeScale().fitContent();
-    }, [displaySubChart, isFetchingTimeframeData]);
 
     // effect executed when symbol changed
     useEffect(() => {
@@ -440,6 +377,32 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
         fetchTimeframeData();
     }, [symbol, timeframe]);
 
+    const renderSubChart = () => {
+        if (!displaySubChart) return null;
+
+        switch (mode) {
+            case "normal": {
+                return null;
+            }
+
+            case "predict-candle": {
+                return <NextCandleChart intialData={data} />;
+            }
+
+            case "predict-timeframe": {
+                if (selectedPredictionOption.selectedFeature === null) return null;
+
+                return SUB_CHART_COMPONENT[selectedPredictionOption.selectedFeature.key]({
+                    chartName: selectedPredictionOption.selectedFeature,
+                });
+            }
+
+            default: {
+                return null;
+            }
+        }
+    };
+
     return (
         <>
             <div
@@ -447,24 +410,11 @@ export default function TradingViewChart(props: ITradingViewChartProps) {
                 className={displaySubChart ? "trading-view-chart__container--splitted-half" : undefined}
                 style={{ width: "100%", height: "100%" }}
             >
-                {isFetchingTimeframeData && (
-                    <div className="trading-view-chart__fetching-indicator__backdrop">
-                        <div className="fetching-indicator__icon">
-                            <Space
-                                direction="vertical"
-                                style={{ color: token.colorPrimary, alignItems: "center" }}
-                                size="middle"
-                            >
-                                <LoadingOutlined style={{ fontSize: 40 }} />
-                                Fetching data ...
-                            </Space>
-                        </div>
-                    </div>
-                )}
+                <FetchingIndicator loading={isFetchingTimeframeData} />
 
                 {/* Chart element */}
                 <div ref={chartRef} id="trading-view-chart__main-chart"></div>
-                <div ref={subChartRef} id="trading-view-chart__sub-chart"></div>
+                <div id="trading-view-chart__sub-chart">{renderSubChart()}</div>
 
                 {/* Overlay element */}
                 <div className="trading-view-chart__overlay trading-view-chart__overlay--top-left">

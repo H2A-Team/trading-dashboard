@@ -1,6 +1,6 @@
 import Header from "./components/header";
 import { useEffect, useState } from "react";
-import TradingViewChart, { IPredictedData, IPredictedLine } from "./components/trading-view-chart";
+import TradingViewChart from "./components/trading-view-chart";
 import {
     Col,
     Row,
@@ -19,11 +19,10 @@ import {
 import { CloseOutlined, GoldOutlined, RightOutlined, SettingOutlined, SwapOutlined } from "@ant-design/icons";
 import { useQuery } from "../../hooks/use-query";
 import PredictOptionModal, { IPredictOptionForm, IPredictOptionModalOptions } from "./components/predict-option-modal";
-import "./index.scss";
-import { CandlestickData } from "lightweight-charts";
 import { HttpService } from "../../services/http-service";
 import { useBlockUI } from "../../contexts/block-ui";
 import { useAntMessage } from "../../contexts/ant-message";
+import "./index.scss";
 
 export interface ITimeframe {
     period: string;
@@ -81,6 +80,10 @@ export interface ISymbol {
 
 export type TRADING_DASHBOARD_MODE = "normal" | "predict-candle" | "predict-timeframe";
 
+export type MODEL_OPTION = "xgboost" | "rnn" | "lstm";
+
+export type FEATURE_OPTION = "close" | "roc";
+
 const defaultPredictOptionModalOptions: IPredictOptionModalOptions = {
     modelsList: [
         {
@@ -108,114 +111,7 @@ const defaultPredictOptionModalOptions: IPredictOptionModalOptions = {
             label: "Rate of change",
         },
     ],
-    selectedFeature: [],
-};
-
-const fakePredictedData: {
-    predictedCandle: CandlestickData[];
-    predictedLines: IPredictedLine[];
-} = {
-    predictedCandle: [
-        {
-            time: "2019-01-01",
-            open: 111.26 + 200,
-            high: 140.26 + 200,
-            low: 70.66 + 200,
-            close: 85.26 + 200,
-        },
-    ],
-    predictedLines: [
-        {
-            label: "Close price",
-            data: [
-                {
-                    time: "2019-01-01",
-                    value: 85.26 + 200,
-                },
-                {
-                    time: "2019-01-02",
-                    value: 90.26 + 200,
-                },
-                {
-                    time: "2019-01-03",
-                    value: 95.26 + 200,
-                },
-                {
-                    time: "2019-01-04",
-                    value: 92.26 + 200,
-                },
-                {
-                    time: "2019-01-05",
-                    value: 100.26 + 200,
-                },
-                {
-                    time: "2019-01-06",
-                    value: 84.26 + 200,
-                },
-                {
-                    time: "2019-01-07",
-                    value: 87.26 + 200,
-                },
-                {
-                    time: "2019-01-08",
-                    value: 102.26 + 200,
-                },
-                {
-                    time: "2019-01-09",
-                    value: 101.26 + 200,
-                },
-                {
-                    time: "2019-01-10",
-                    value: 80.26 + 200,
-                },
-            ],
-        },
-        {
-            label: "Rate of change",
-            data: [
-                {
-                    time: "2019-01-01",
-                    value: 20,
-                },
-                {
-                    time: "2019-01-02",
-                    value: -20,
-                },
-                {
-                    time: "2019-01-03",
-                    value: 30,
-                },
-                {
-                    time: "2019-01-04",
-                    value: 27,
-                },
-                {
-                    time: "2019-01-05",
-                    value: 22,
-                },
-                {
-                    time: "2019-01-06",
-                    value: -15,
-                },
-                {
-                    time: "2019-01-07",
-                    value: -10,
-                },
-                {
-                    time: "2019-01-08",
-                    value: 15,
-                },
-                {
-                    time: "2019-01-09",
-                    value: 17,
-                },
-                {
-                    time: "2019-01-10",
-                    value: 19,
-                },
-            ],
-        },
-    ],
+    selectedFeature: null,
 };
 
 export default function TradingDashboard() {
@@ -233,7 +129,6 @@ export default function TradingDashboard() {
     const [mode, setMode] = useState<TRADING_DASHBOARD_MODE>("normal");
     const [openPredictOptionModal, setOpenPredictOptionModal] = useState(false);
     const [predictOptions, setPredictOptions] = useState<IPredictOptionModalOptions>(defaultPredictOptionModalOptions);
-    const [predictedData, setPredictedData] = useState<IPredictedData>({});
 
     useEffect(() => {
         const fetch = async () => {
@@ -267,9 +162,6 @@ export default function TradingDashboard() {
         if (selectedSymbol === null) return;
         switch (key) {
             case PREDICT_OPTIONS.candle.key: {
-                setPredictedData({
-                    nextCandle: fakePredictedData.predictedCandle,
-                });
                 setMode("predict-candle");
                 break;
             }
@@ -285,23 +177,10 @@ export default function TradingDashboard() {
     const handlePredictNextTimeframe = (form: IPredictOptionForm) => {
         setPredictOptions((val) => ({ ...val, selectedFeature: form.feature, selectedModel: form.model }));
         setOpenPredictOptionModal(false);
-        setPredictedData({
-            nextTimeframe: [
-                {
-                    label: fakePredictedData.predictedLines[0].label,
-                    data: fakePredictedData.predictedLines[0].data,
-                },
-                {
-                    label: fakePredictedData.predictedLines[1].label,
-                    data: fakePredictedData.predictedLines[1].data,
-                },
-            ],
-        });
         setMode("predict-timeframe");
     };
 
     const handleQuitPredictionMode = () => {
-        setPredictedData(() => ({}));
         setMode("normal");
     };
 
@@ -426,7 +305,7 @@ export default function TradingDashboard() {
                                     <TradingViewChart
                                         symbol={selectedSymbol}
                                         mode={mode}
-                                        predictedData={predictedData}
+                                        selectedPredictionOption={predictOptions}
                                         timeframe={timeframe}
                                     />
                                 )}

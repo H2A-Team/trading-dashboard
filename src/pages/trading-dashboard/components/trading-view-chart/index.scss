@@ -27,21 +27,6 @@
             border-top: var(--chart-gap) solid var(--background-color);
         }
     }
-
-    & > .trading-view-chart__fetching-indicator__backdrop {
-        position: absolute;
-        inset: 0;
-        z-index: 4;
-
-        background-color: rgb(255, 255, 255, 0.8);
-
-        display: flex;
-        justify-content: center;
-        align-items: center;
-
-        user-select: none;
-        -webkit-user-select: none;
-    }
 }
 
 .trading-view-chart__overlay {
@@ -63,6 +48,11 @@
 
         user-select: none;
         -webkit-user-select: none;
+
+        &.overlay-item--selectable {
+            user-select: auto;
+            -webkit-user-select: auto;
+        }
 
         > .overlay-item__card {
             background-color: white;
