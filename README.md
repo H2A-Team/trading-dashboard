@@ -1,27 +1,31 @@
-# React + TypeScript + Vite
+# Trading Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Owner information
+- Group name: H2A
+- University: University of Science - VNUHCM
 
-Currently, two official plugins are available:
+| Student Name    | Student ID | Email                       |
+| --------------- | ---------- | --------------------------- |
+| Huy Le Minh     | 19127157   | leminhhuy.hcmus@gmail.com   |
+| Anh Hoang Le    | 19127329   | lehoanganh.le2001@gmail.com |
+| Hung Nguyen Hua | 19127150   | huahung.nguyen01@gmail.com  |
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Expanding the ESLint configuration
+## Instruction to start app
+- Install dependencies:
+   ```
+   npm install
+   ```
+- Setup environment variables:
+   - Create `.env` file from `env.template` file
+   - Example values:
+      ```
+      VITE_API_URL="http://localhost:8000/api"
+      VITE_SOCKET_URL="http://localhost:8000"
+      ```
+- Run app:
+   ```
+   npm run dev
+   ```
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-   parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-   },
-```
-
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+## References

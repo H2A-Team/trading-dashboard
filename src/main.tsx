@@ -7,6 +7,7 @@ import { routes } from "./constants/routes";
 import "./assets/index.scss";
 import { customizedTheme } from "./constants/theme";
 import { BlockUIProvider } from "./contexts/block-ui";
+import { AntMessageProvider } from "./contexts/ant-message";
 
 const router = createBrowserRouter(routes);
 
@@ -15,7 +16,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <StyleProvider hashPriority="high">
             <ConfigProvider theme={customizedTheme}>
                 <BlockUIProvider>
-                    <RouterProvider router={router} />
+                    <AntMessageProvider>
+                        <RouterProvider router={router} />
+                    </AntMessageProvider>
                 </BlockUIProvider>
             </ConfigProvider>
         </StyleProvider>

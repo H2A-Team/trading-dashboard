@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
 import { Space } from "antd";
 import { OverlayBlockUI } from "./components/overlay";
 import { Loading } from "../../components/loading";
@@ -31,23 +31,23 @@ const BlockUI = createContext<IBlockUI>({
 export const BlockUIProvider = ({ children }: { children: JSX.Element }) => {
     const [globalState, setGlobalState] = useState<IBlockUIState>(initialGlobalState);
 
-    const blockUI = (msg?: string, isTransparent: boolean = false) => {
+    const blockUI = useCallback((msg?: string, isTransparent: boolean = false) => {
         setGlobalState({
             ...globalState,
             blockMessage: msg || initialGlobalState.blockMessage,
             isBlocking: true,
             isTransparent: isTransparent,
         });
-    };
+    }, []);
 
-    const unblockUI = () => {
+    const unblockUI = useCallback(() => {
         setGlobalState({
             ...globalState,
             blockMessage: initialGlobalState.blockMessage,
             isBlocking: false,
             isTransparent: false,
         });
-    };
+    }, []);
 
     return (
         <BlockUI.Provider value={{ state: globalState, blockUI, unblockUI }}>

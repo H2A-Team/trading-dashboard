@@ -39,7 +39,7 @@ interface IUseSocket {
 // define all available socket status
 export enum SOCKET_STATUS {
     notInitialized,
-    isConnecting,
+    isInitializing,
     isConnected,
     isClosed,
     isRetrying,
@@ -72,7 +72,7 @@ export default function useSocket(): IUseSocket {
 
     // memorized functions
     const initConnectSocket = useCallback(() => {
-        setSocketStatus(SOCKET_STATUS.isConnecting);
+        setSocketStatus(SOCKET_STATUS.isInitializing);
         setRetryNo(defaultStates.retryNo);
     }, []);
 
@@ -98,14 +98,18 @@ export default function useSocket(): IUseSocket {
     }, [socket]);
 
     useEffect(() => {
-        const newSocket = io(APP_CONSTANTS.SOCKET_DOMAIN + namespace);
+        if (socketStatus !== SOCKET_STATUS.isInitializing) return;
+        const newSocket = io(APP_CONSTANTS.SOCKET_DOMAIN + namespace, {
+            path: "/socket/socket.io",
+            transports: ["websocket"],
+        });
 
         setSocket((oldSocket) => {
             oldSocket?.close();
 
             return newSocket;
         });
-    }, [namespace]);
+    }, [namespace, socketStatus]);
 
     useEffect(() => {
         if (retryNo === 0) return;
